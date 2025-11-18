@@ -28,7 +28,7 @@ jobs:
 
       - name: Run scraper
         run: |
-          cd ..
+          cd finding_adresses_zipcodes
           python src/scrape_manege_bedrijvenregister.py \
             --offset ${{ inputs.offset }} \
             --limit ${{ inputs.limit }} \
