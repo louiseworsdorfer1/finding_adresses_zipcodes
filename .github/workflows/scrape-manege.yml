@@ -1,0 +1,40 @@
+name: Scrape maneges (chunk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      offset:
+        description: 'Start vanaf plaats nummer (bijv. 0, 40, 80...)'
+        required: true
+        default: '0'
+      limit:
+        description: 'Hoeveel plaatsen crawlen (bijv. 40)'
+        required: true
+        default: '40'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas beautifulsoup4 requests lxml
+
+      - name: Run scraper
+        run: |
+          python src/scrape_manege_bedrijvenregister.py \
+            --offset ${{ inputs.offset }} \
+            --limit ${{ inputs.limit }} \
+            --output outputs/resultaat.csv
+
+      - name: Upload resultaat
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultaat
+          path: outputs/resultaat.csv
