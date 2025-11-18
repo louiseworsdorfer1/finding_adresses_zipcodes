@@ -28,6 +28,7 @@ jobs:
 
       - name: Run scraper
         run: |
+          cd ..
           python src/scrape_manege_bedrijvenregister.py \
             --offset ${{ inputs.offset }} \
             --limit ${{ inputs.limit }} \
