@@ -1,0 +1,86 @@
+from pathlib import Path
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+
+AFVOER_CSV = ROOT / "data" / "data_afvoerlocaties_2024_met_manegeinfo.csv"
+FNRS_CSV   = ROOT / "outputs" / "fnrs_manege_matches.csv"
+OUT_CSV    = ROOT / "data" / "data_afvoerlocaties_2024_met_fnrs_en_bedrijvenregister.csv"
+
+
+def norm_pc(s: str) -> str:
+    """Maak van '1234 ab' -> '1234AB'."""
+    if not isinstance(s, str):
+        s = str(s)
+    return s.replace(" ", "").upper().strip()
+
+
+# --- 1. hoofd-data inlezen ---
+df = pd.read_csv(AFVOER_CSV, sep=";")
+
+# kolom met postcode zoeken (in jouw file is dat 'POSTCODE_LADEN')
+pc_col = [c for c in df.columns if "postcode" in c.lower()][0]
+df["PC_NORM"] = df[pc_col].astype(str).apply(norm_pc)
+
+# kolommen waarin we willen schrijven
+naam_col   = [c for c in df.columns if "naam" in c.lower()][0]           # 'Naam stal'
+straat_col = [c for c in df.columns if "straat" in c.lower()][0]         # 'Straat + huisnummer'
+plaats_col = [c for c in df.columns if "plaats" in c.lower()][0]         # 'Plaats'
+tel_col    = [c for c in df.columns if "tel" in c.lower()][0]            # 'tel nummer'
+# kvk_col  = [c for c in df.columns if "kvk" in c.lower()][0]            # hier hebben we niks uit FNRS
+df["KVK nummer"] = (
+    df["KVK nummer"]
+    .fillna("")                      # lege velden tonen als "" i.p.v. 'nan'
+    .astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+)
+
+# --- 2. FNRS-bestand inlezen en opschonen ---
+fnrs = pd.read_csv(FNRS_CSV)
+
+fnrs["PC_NORM"] = fnrs["Postcode"].astype(str).apply(norm_pc)
+
+# rijen met “Geen FNRS-bedrijf”, “Geen klikbaar resultaat”, “postcode mismatch”, “Fout” weggooien
+bad_prefixes = (
+    "Geen FNRS-bedrijf",
+    "Geen klikbaar resultaat",
+    "Geen FNRS-bedrijf (postcode mismatch)",
+    "Fout",
+)
+naam_series = fnrs["Naam manege"].fillna("")
+mask_good = ~naam_series.str.startswith(bad_prefixes)
+fnrs_clean = fnrs[mask_good].copy()
+
+# indexeren op genormaliseerde postcode
+fnrs_idx = fnrs_clean.set_index("PC_NORM")
+
+
+# helper: alleen invullen waar nu nog leeg is
+def only_empty(col):
+    return df[col].isna() | (df[col].astype(str).str.strip() == "")
+
+
+# --- 3. waarden mappen op basis van postcode ---
+df.loc[only_empty(naam_col), naam_col] = df.loc[only_empty(naam_col), "PC_NORM"].map(
+    fnrs_idx["Naam manege"]
+)
+
+df.loc[only_empty(straat_col), straat_col] = df.loc[only_empty(straat_col), "PC_NORM"].map(
+    fnrs_idx["Straat en huisnummer"]
+)
+
+df.loc[only_empty(plaats_col), plaats_col] = df.loc[only_empty(plaats_col), "PC_NORM"].map(
+    fnrs_idx["Plaats"]
+)
+
+df.loc[only_empty(tel_col), tel_col] = df.loc[only_empty(tel_col), "PC_NORM"].map(
+    fnrs_idx["Telefoonnummer (indien beschikbaar)"]
+)
+
+# PC_NORM opruimen
+df = df.drop(columns=["PC_NORM"])
+
+# --- 4. opslaan ---
+df.to_csv(OUT_CSV, sep=";", index=False, encoding="utf-8-sig")
+
+print(f"Klaar! Nieuwe file geschreven naar: {OUT_CSV}")
